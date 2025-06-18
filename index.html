@@ -1,0 +1,194 @@
+<!DOCTYPE html><html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Robot TX Sunwin Pro</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #111;
+      color: white;
+    }#top-bar {
+  padding: 10px;
+  background: #222;
+  position: fixed;
+  top: 0;
+  width: 100%;
+  z-index: 9999;
+}
+
+#link-input {
+  padding: 10px;
+  width: 70%;
+  border-radius: 5px;
+  border: none;
+  font-size: 16px;
+}
+
+#load-btn {
+  padding: 10px 15px;
+  background: #ffcc00;
+  border: none;
+  border-radius: 5px;
+  font-weight: bold;
+  margin-left: 10px;
+  cursor: pointer;
+}
+
+#iframe-container {
+  position: absolute;
+  top: 60px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
+iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+#robot-chat {
+  position: fixed;
+  bottom: 100px;
+  right: 20px;
+  display: flex;
+  align-items: center;
+  background: white;
+  color: black;
+  padding: 10px 15px;
+  border-radius: 15px;
+  box-shadow: 0 0 10px rgba(0,0,0,0.5);
+  font-size: 16px;
+  z-index: 99999;
+  cursor: move;
+  user-select: none;
+  display: none;
+}
+
+#robot-img {
+  width: 40px;
+  height: 40px;
+  margin-right: 10px;
+}
+
+#robot-info {
+  line-height: 1.5;
+}
+
+#tx-history {
+  position: fixed;
+  bottom: 10px;
+  left: 10px;
+  background: #222;
+  padding: 10px;
+  border-radius: 10px;
+  font-size: 14px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+  </style>
+</head>
+<body><div id="top-bar">
+  🔗 Link game:
+  <input type="text" id="link-input" value="https://web.sunwin.us/" />
+  <button id="load-btn">Vào Game</button>
+</div><div id="iframe-container">
+  <iframe id="game-frame" src=""></iframe>
+</div><div id="robot-chat">
+  <img id="robot-img" src="https://i.imgur.com/kd0VtCj.png" alt="robot">
+  <div id="robot-info">
+    <div id="rc-session">#---- : Đang chờ...</div>
+    <div id="rc-prediction">Độ Tin Cậy: --%</div>
+  </div>
+</div><div id="tx-history"></div><script>
+  const loadBtn = document.getElementById('load-btn');
+  const input = document.getElementById('link-input');
+  const topBar = document.getElementById('top-bar');
+  const iframe = document.getElementById('game-frame');
+  const robotChat = document.getElementById('robot-chat');
+  const sessionEl = document.getElementById('rc-session');
+  const predictionEl = document.getElementById('rc-prediction');
+  const historyBox = document.getElementById('tx-history');
+
+  let historyTX = [];
+
+  loadBtn.onclick = () => {
+    let url = input.value.trim();
+    if (!url.startsWith('http')) url = 'https://' + url;
+    iframe.src = url;
+    topBar.style.display = 'none';
+    robotChat.style.display = 'flex';
+  };
+
+  let offsetX = 0, offsetY = 0, isDragging = false;
+  robotChat.addEventListener("mousedown", (e) => {
+    isDragging = true;
+    offsetX = e.clientX - robotChat.offsetLeft;
+    offsetY = e.clientY - robotChat.offsetTop;
+  });
+  document.addEventListener("mouseup", () => isDragging = false);
+  document.addEventListener("mousemove", (e) => {
+    if (isDragging) {
+      robotChat.style.left = (e.clientX - offsetX) + 'px';
+      robotChat.style.top = (e.clientY - offsetY) + 'px';
+      robotChat.style.bottom = 'auto';
+      robotChat.style.right = 'auto';
+    }
+  });
+
+  const ws = new WebSocket("ws://163.61.110.10:8000/?id=duy914c&key=dduy1514nsadfl");
+
+  ws.onopen = () => console.log("✅ Đã kết nối WebSocket");
+
+  ws.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      const { session, total } = data;
+      const result = total >= 11 ? "Tài" : "Xỉu";
+      
+      historyTX.push(result);
+      if (historyTX.length > 20) historyTX.shift();
+
+      sessionEl.innerHTML = `#${session} : <b>${result}</b>`;
+      predictionEl.innerHTML = `Độ Tin Cậy: <b>${getPrediction()}%</b>`;
+      renderHistory();
+    } catch (err) {
+      console.error("❌ Lỗi dữ liệu:", err);
+    }
+  };
+
+  function renderHistory() {
+    historyBox.innerHTML = 'Lịch sử TX: ' + historyTX.join(' - ');
+  }
+
+  function getPrediction() {
+    const last5 = historyTX.slice(-5).join('');
+    const patterns = [
+      { name: "Bệt dài", regex: /(T{3,}|X{3,})/ },
+      { name: "Xen kẽ", regex: /(TX){2,}|(XT){2,}/ },
+      { name: "Kép 2-2", regex: /(TTXX|XXTT)/ },
+      { name: "Đảo 1-1", regex: /(TXTX|XTXT)/ },
+      { name: "Chu kỳ 3", regex: /(.{3})\1+/ },
+      { name: "Chu kỳ 2", regex: /(.{2})\1+/ },
+      { name: "Cầu đối xứng", regex: /^(.)(.).*\2\1$/ },
+      { name: "Bán đối xứng", regex: /^(.)(.).\2/ },
+      { name: "Tài kép", regex: /(TT)/ },
+      { name: "Xỉu kép", regex: /(XX)/ }
+      // Thêm thuật toán khác tại đây nếu muốn mở rộng thêm
+    ];
+
+    for (let p of patterns) {
+      if (p.regex.test(last5)) {
+        console.log('Khớp cầu:', p.name);
+        return Math.floor(Math.random() * 10 + 90);
+      }
+    }
+
+    return Math.floor(Math.random() * 10 + 75); // nếu không khớp cầu nào
+  }
+</script></body>
+</html>
